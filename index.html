@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ab-datepicker — Demo</title>
+    <link rel="stylesheet" href="ab-calendar.css" />
+    <style>
+      body {
+        font-family: "DM Sans", system-ui, sans-serif;
+        background: #eaece9;
+        min-height: 100vh;
+        padding: 32px 16px 100px;
+        color: #1a1c1a;
+      }
+      .step {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #767976;
+        margin: 0;
+      }
+      .summary-card {
+        width: 100%;
+        background: #fff;
+        border-radius: 14px;
+        border: 1px solid #e4e6e4;
+        overflow: hidden;
+      }
+      .summary-header {
+        padding: 10px 16px;
+        background: #f7f8f7;
+        border-bottom: 1px solid #e4e6e4;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: #3a8b6b;
+      }
+      .summary-body {
+        padding: 12px 16px;
+      }
+      .summary-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        color: #767976;
+        line-height: 1.8;
+      }
+      .summary-row span:last-child {
+        font-weight: 600;
+        color: #1a1c1a;
+      }
+      .summary-empty {
+        font-size: 13px;
+        color: #aeb2ae;
+        font-style: italic;
+      }
+      .confirm-btn {
+        display: block;
+        width: 100%;
+        margin-top: 12px;
+        padding: 14px;
+        background: #3a8b6b;
+        color: #fff;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        border: none;
+        border-radius: 14px;
+        cursor: pointer;
+        transition: background 0.13s;
+      }
+      .confirm-btn:hover {
+        background: #2d7055;
+      }
+      .confirm-btn:disabled {
+        background: #c8cdc8;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ab-datepicker-section">
+      <!-- ── Date picker ── -->
+      <div class="ab-datepicker-wrapper">
+        <div class="ab-datepicker-header">
+          <p class="step">1. Select Delivery Date</p>
+          <span id="ab-clock"></span>
+        </div>
+        <div id="my-daterow"></div>
+        <div id="my-calendar" mode="popup" timezone="Asia/Dhaka"></div>
+      </div>
+
+      <!-- ── Timeslot picker ── -->
+      <div class="ab-timeslot-wrapper">
+        <div class="ab-timeslot-header">
+          <p class="step">2. Select Time Slot</p>
+        </div>
+        <div id="my-timeslots"></div>
+      </div>
+
+      <!-- ── Summary ── -->
+      <div class="summary-card">
+        <div class="summary-header">Booking Summary</div>
+        <div class="summary-body" id="summary-body">
+          <p class="summary-empty">Waiting…</p>
+        </div>
+      </div>
+
+      <button class="confirm-btn" id="confirm-btn" disabled>
+        Confirm Delivery Schedule
+      </button>
+    </div>
+
+    <script src="ab-datepicker.js"></script>
+    <script>
+      "use strict";
+
+      let currentDateObj = null;
+      let selectedSlot = null;
+
+      const noSunday = true;
+      const noSaturday = true;
+      const isExpress = true;
+
+      /* ════════════════════════════════════════════════════════════
+         STEP 1 — AbDatepicker
+         Init FIRST so AbTimeslot inherits the timezone automatically.
+      ════════════════════════════════════════════════════════════ */
+      const picker = AbDatepicker.init({
+        daterowId: "my-daterow",
+        calendarId: "my-calendar",
+        clockId: "ab-clock",
+        accent: "#3a8b6b",
+        slotDependency: false, // auto-disable dates with no slots
+        initialRender: false, // fire onChange on page load
+        onChange(val) {
+          currentDateObj = val;
+          console.log(currentDateObj);
+
+          if (typeof ts !== "undefined") ts.setDate(val.dateKey);
+          updateSummary();
+        },
+      });
+
+      const ts = AbTimeslot.init({
+        containerId: "my-timeslots",
+        noSlotsText: "No delivery slots available for this date.",
+        slots: [
+          {
+            id: "9am_1pm",
+            open: true,
+            label: "Morning",
+            timeRange: "9am – 1pm",
+            prevdayCutoff: "17:00",
+            samedayCutoff: null,
+            displayText: "Between 9am and 1pm",
+          },
+          {
+            id: "1pm_6pm",
+            open: true,
+            label: "Afternoon",
+            timeRange: "1pm – 6pm",
+            prevdayCutoff: null,
+            samedayCutoff: "14:00",
+            displayText: "Between 1pm and 6pm",
+          },
+          {
+            id: "6pm_9pm",
+            open: true,
+            label: "Evening",
+            timeRange: "6pm – 9pm",
+            prevdayCutoff: null,
+            samedayCutoff: "17:00",
+            displayText: "Between 6pm and 9pm",
+          },
+          {
+            id: "9am_6pm",
+            open: true,
+            label: "Standard",
+            timeRange: "9am – 6pm",
+            prevdayCutoff: null,
+            samedayCutoff: "16:00",
+            displayText: "Between 9am and 6pm",
+          },
+          {
+            id: "express",
+            open: true,
+            label: "Express",
+            timeRange: "Next 90 mins",
+            showFrom: "00:00",
+            showUntil: "16:00",
+            displayText: "Express delivery (next 90 mins)",
+          },
+        ],
+        blockSlots: ["9am_6pm"],
+
+        blockSlotsByDate: {
+          "06-04-2024": {
+            "9am_1pm": false,
+            "1pm_6pm": false,
+            "6pm_9pm": false,
+            express: false,
+          },
+          "06-04-2024": { "1pm_6pm": { prevdayCutoff: "24:00" } },
+          "06-04-2024": { "9am_1pm": {prevdayCutoff: null, samedayCutoff: "24:00" } },
+
+          //********vday********
+          "06-04-2024": {
+            "9am_1pm": { prevdayCutoff: "24:00" },
+            "1pm_6pm": { samedayCutoff: "12:00" },
+            "6pm_9pm": false,
+          },
+          "07-04-2024": {
+            "9am_1pm": { prevdayCutoff: "24:00" },
+            "1pm_6pm": { samedayCutoff: null, prevdayCutoff: "12:00" },
+            "6pm_9pm": false,
+          },
+          "08-04-2024": {
+            "9am_1pm": { prevdayCutoff: "24:00" },
+            "1pm_6pm": { samedayCutoff: null, prevdayCutoff: "12:00" },
+            "6pm_9pm": false,
+          },
+          "09-04-2024": {
+            "9am_1pm": { prevdayCutoff: "24:00" },
+            "1pm_6pm": { samedayCutoff: null, prevdayCutoff: "12:00" },
+            "6pm_9pm": false,
+          },
+          //********vday********
+        },
+
+        weekdayRules: {
+          // monday: { "9am_1pm": { prevdayCutoff: "24:00" } },
+          sunday: {
+            "6pm_9pm": false,
+            express: false,
+          },
+          saturday: {
+            express: false,
+          },
+        },
+        rules: [
+          ({ slot, dateKey, dow, dowName, isToday, isTomorrow, now, cfg }) => {
+            // Express only visible today (hidden on all future dates)
+            if (slot.id === "express") {
+              const allow = isToday && isExpress;
+              if (!allow) return false;
+            }
+
+            // Using the new `date` param (DD-MM-YYYY) for date-string matching:
+            // if (date === '20-04-2026' && slot.id === '9am_1pm') return false;
+
+            // Override cutoff for a specific date (must clear prevdayCutoff if needed):
+            // if (date === '25-04-2026' && slot.id === '9am_1pm') {
+            //   cfg.samedayCutoff = '12:00';
+            //   cfg.prevdayCutoff = null;
+            // }
+
+            // Close afternoon early on all Wednesdays:
+            // if (dowName === 'wednesday' && slot.id === '1pm_6pm') {
+            //   cfg.samedayCutoff = '11:00';
+            // }
+
+            // Mark unavailable (shown greyed, not hidden):
+            // if (dowName === 'wednesday' && slot.id === '6pm_9pm') {
+            //   cfg.unavailable = true;
+            // }
+          },
+        ],
+
+        onChange({ dateKey, slot, status }) {
+          selectedSlot = slot;
+          updateSummary();
+        },
+      });
+
+      ts.linkDatepicker(picker, { lookAheadDays: 60 });
+      ts.setDate(picker.getSelected());
+
+      /* ════════════════════════════════════════════════════════════
+         SUMMARY + CONFIRM
+      ════════════════════════════════════════════════════════════ */
+      const WDAYS = [
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+      ];
+      const MNAMES = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+      ];
+
+      function friendlyDate(d) {
+        if (!d) return "—";
+        return `${WDAYS[new Date(d.year, d.month - 1, d.day).getDay()]}, ${d.day} ${MNAMES[d.month - 1]} ${d.year}`;
+      }
+
+      function updateSummary() {
+        const body = document.getElementById("summary-body");
+        const btn = document.getElementById("confirm-btn");
+        if (!currentDateObj || !selectedSlot) {
+          body.innerHTML =
+            '<p class="summary-empty">Pick a date and time slot.</p>';
+          btn.disabled = true;
+          return;
+        }
+        body.innerHTML = `
+          <div class="summary-row"><span>Date</span><span>${friendlyDate(currentDateObj)}</span></div>
+          <div class="summary-row"><span>Slot</span><span>${selectedSlot.displayText}</span></div>
+        `;
+        btn.disabled = false;
+      }
+
+      document.getElementById("confirm-btn").addEventListener("click", () => {
+        if (!currentDateObj || !selectedSlot) return;
+        alert(
+          `✓ Confirmed!\n\nDate: ${friendlyDate(currentDateObj)}\nSlot: ${selectedSlot.displayText}`,
+        );
+      });
+    </script>
+  </body>
+</html>

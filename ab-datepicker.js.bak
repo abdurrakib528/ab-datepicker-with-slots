@@ -1,0 +1,1393 @@
+/*!
+ * ab-datepicker.js  v2.4
+ * AbDatepicker + AbTimeslot
+ *
+ * ─── QUICK START ────────────────────────────────────────────────────────────
+ *
+ *  HTML (your wrapper, full control over layout):
+ *
+ *    <div class="ab-datepicker-wrapper">
+ *      <div class="ab-datepicker-header">
+ *        <p>Select Delivery Date</p>
+ *        <span id="ab-clock"></span>
+ *      </div>
+ *      <div id="my-daterow"></div>
+ *      <div id="my-calendar" mode="inline" timezone="Asia/Kuala_Lumpur"></div>
+ *    </div>
+ *    <div id="my-timeslots"></div>
+ *
+ *  JavaScript (always init picker first, then timeslot):
+ *
+ *    const picker = AbDatepicker.init({
+ *      daterowId    : 'my-daterow',
+ *      calendarId   : 'my-calendar',
+ *      clockId      : 'ab-clock',
+ *      timezone     : 'Asia/Kuala_Lumpur',
+ *      accent       : '#3a8b6b',
+ *      slotDependency: true,
+ *      initialRender: true,
+ *      onChange(val) {
+ *        currentDateObj = val;
+ *        if (typeof ts !== 'undefined') ts.setDate(val.dateKey);
+ *        updateSummary();
+ *      },
+ *    });
+ *
+ *    const ts = AbTimeslot.init({
+ *      containerId: 'my-timeslots',
+ *      slots: [ ... ],
+ *      onChange({ dateKey, slot, status }) { ... },
+ *    });
+ *
+ *    ts.linkDatepicker(picker, { lookAheadDays: 60 });
+ *    ts.setDate(picker.getSelected());
+ *
+ * ─── RULE PRECEDENCE (most powerful → least powerful) ───────────────────────
+ *
+ *   rules[]  >  blockSlotsByDate  >  weekdayRules  >  slot defaults
+ *
+ *   Rules run LAST and see the already-merged cfg. Whatever a rule writes wins.
+ *
+ *   Within the merge chain:
+ *     blockSlotsByDate  — wins over weekdayRules for that specific date
+ *     weekdayRules      — applied only when no blockSlotsByDate exists for date
+ *
+ * ─── AbDatepicker OPTIONS ───────────────────────────────────────────────────
+ *
+ *  daterowId      {string}   ID of the chip-strip container div
+ *  calendarId     {string}   ID of the calendar panel div
+ *  clockId        {string}   optional — ID of an external clock element
+ *  timezone       {string}   IANA timezone (also settable as attribute on cal div)
+ *  mode           {string}   'inline' | 'popup'
+ *  accent         {string}   CSS hex color for selected state
+ *  initialRender  {boolean}  Fire onChange once on page load (via setTimeout)
+ *  slotDependency {boolean}  Disable dates with no available timeslots
+ *  blockedDates   {string[]} 'DD-MM-YYYY' strings to block
+ *  blockedRanges  {object[]} [{start:'YYYY-MM-DD', end:'YYYY-MM-DD'}]
+ *  prevDayCutoff  {string}   Block tomorrow after this time, e.g. '18:00'
+ *  sameDayCutoff  {string}   Block today after this time, e.g. '12:00'
+ *  sundayCutoff   {string}   Block Sundays after this time
+ *  noSunday       {boolean}  Block ALL Sundays
+ *  noSaturday     {boolean}  Block ALL Saturdays
+ *  dateCutoffs    {object}   { 'YYYY-MM-DD': 'HH:MM' } per-date overrides
+ *  beforeShowDay  {function} Return false to disable a day
+ *  onChange       {function} Called on every date selection
+ *
+ * ─── onChange PAYLOAD ────────────────────────────────────────────────────────
+ *
+ *  {
+ *    date      : 'DD-MM-YYYY',
+ *    dateKey   : 'YYYY-MM-DD',
+ *    time      : 'HH:MM',
+ *    dayofweek : 'Mon',
+ *    dayIndex  : 1,           // 0=Sun … 6=Sat
+ *    isToday   : false,
+ *    isDisabled: false,
+ *    year      : 2026,
+ *    month     : 4,           // 1-based
+ *    day       : 20,
+ *    monthName : 'April',
+ *  }
+ *
+ * ─── AbDatepicker PUBLIC API ─────────────────────────────────────────────────
+ *
+ *  picker.getSelected()             → 'DD-MM-YYYY' or null
+ *  picker.setCalMode('popup')
+ *  picker.open() / picker.close()
+ *  picker.addBlockedDate('DD-MM-YYYY')
+ *  picker.clearBlockedDates()
+ *  picker.reload()
+ *
+ * ─── AbTimeslot OPTIONS ─────────────────────────────────────────────────────
+ *
+ *  containerId      {string}     ID of the timeslot grid container
+ *  timezone         {string}     Inherited from AbDatepicker if omitted
+ *  closesSoonMins   {number}     Minutes before cutoff to show badge (default 120)
+ *  noSlotsText      {string}     Empty-state message
+ *  slots            {object[]}   Base slot definitions
+ *  blockSlots       {string[]}   IDs to hide on all dates
+ *  blockSlotsByDate {object}     Per-date overrides (DD-MM-YYYY or YYYY-MM-DD keys)
+ *  weekdayRules     {object}     Per-weekday overrides
+ *  rules            {function[]} Rule callbacks — highest precedence
+ *  onChange         {function}   { dateKey, slot, status }
+ *
+ * ─── SLOT FIELDS ─────────────────────────────────────────────────────────────
+ *
+ *  id             unique string, e.g. '9am_1pm'
+ *  open           false = globally hidden
+ *  label          display label, e.g. 'Morning'
+ *  timeRange      display range, e.g. '9am – 1pm'
+ *  displayText    full description for confirmations
+ *  samedayCutoff  today: unavailable after this time
+ *  prevdayCutoff  today always blocked; tomorrow blocked after this time
+ *  showFrom       today only: hidden BEFORE this time
+ *  showUntil      today only: hidden FROM this time onwards
+ *
+ * ─── OVERRIDE VALUES (blockSlotsByDate / weekdayRules) ──────────────────────
+ *
+ *  false / null   hide
+ *  'open'         skip samedayCutoff; prevdayCutoff still applies
+ *  'force'        always available — skip ALL cutoffs
+ *  'HH:MM'        override samedayCutoff, auto-clears prevdayCutoff
+ *  { samedayCutoff, prevdayCutoff, showFrom, showUntil, hidden, unavailable }
+ *
+ * ─── RULES ──────────────────────────────────────────────────────────────────
+ *
+ *  rules[] run AFTER blockSlotsByDate and weekdayRules are merged into cfg.
+ *  Rules see the already-merged cfg and can override anything.
+ *
+ *  ctx = { slot, dateKey, dow, dowName, isToday, isTomorrow, now, cfg }
+ *
+ *  IMPORTANT: when you set cfg.samedayCutoff in a rule for a slot that has
+ *  prevdayCutoff by default, you must ALSO set cfg.prevdayCutoff = null —
+ *  otherwise prevdayCutoff fires first and returns 'unavailable'.
+ *  The object-override path auto-clears it; rules do not (free-form).
+ *
+ *  Return false   → hide
+ *  Mutate cfg.*   → override
+ *  Return nothing → continue
+ *
+ * ─── AbTimeslot PUBLIC API ───────────────────────────────────────────────────
+ *
+ *  ts.setDate(key)
+ *  ts.getSelected()                 → { dateKey, slot } | null
+ *  ts.clearSelection()
+ *  ts.refresh()
+ *  ts.hasAvailableSlots(key)        → boolean
+ *  ts.linkDatepicker(picker, opts)
+ *  ts.setSlots(arr) / ts.patchSlot(id, patch)
+ *  ts.setBlockSlots(arr) / ts.addBlockSlots(...) / ts.removeBlockSlots(...)
+ *  ts.setBlockSlotsByDate(obj) / ts.addBlockSlotsByDate(obj)
+ *  ts.setWeekdayRules(obj) / ts.addWeekdayRules(obj)
+ *  ts.setRules(arr) / ts.addRule(fn)
+ *
+ * ─── TIMEZONE OPTIONS ────────────────────────────────────────────────────────
+ *
+ *  Asia/Kuala_Lumpur  MYT +8    Asia/Singapore  SGT +8    Asia/Manila   PHT +8
+ *  Asia/Hong_Kong     HKT +8    Asia/Bangkok    ICT +7    Asia/Jakarta  WIB +7
+ *  Asia/Dhaka         BDT +6    Asia/Kolkata    IST +5:30 Asia/Tokyo    JST +9
+ *  Asia/Shanghai      CST +8    Asia/Seoul      KST +9    Asia/Dubai    GST +4
+ *  Asia/Riyadh        AST +3    Europe/London   GMT/BST   Europe/Paris  CET
+ *  America/New_York   EST       America/Los_Angeles PST   Australia/Sydney AEST
+ */
+
+(function (global) {
+  "use strict";
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     SHARED CONSTANTS
+  ═══════════════════════════════════════════════════════════════════════ */
+
+  const MONTH_NAMES = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  const DAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  // Shared TZ — AbTimeslot inherits from last AbDatepicker.init() call
+  let _sharedTimezone = "Asia/Kuala_Lumpur";
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     AbDatepicker
+  ═══════════════════════════════════════════════════════════════════════ */
+
+  function createDatepickerInstance(opts) {
+    const daterowEl = document.getElementById(opts.daterowId);
+    const calendarEl = document.getElementById(opts.calendarId);
+    const clockEl = opts.clockId ? document.getElementById(opts.clockId) : null;
+
+    const calMode =
+      (calendarEl && calendarEl.getAttribute("mode")) || opts.mode || "inline";
+    const timezone =
+      (calendarEl && calendarEl.getAttribute("timezone")) ||
+      opts.timezone ||
+      "Asia/Kuala_Lumpur";
+    const accent = opts.accent || "#3a8b6b";
+    _sharedTimezone = timezone;
+
+    const S = {
+      timezone,
+      calMode,
+      today: null,
+      todayKey: null,
+      calYear: 0,
+      calMonth: 0,
+      selected: null,
+      isOpen: false,
+      blockedDates: opts.blockedDates || [],
+      blockedRanges: opts.blockedRanges || [],
+      cutoffs: {
+        prevDay: opts.prevDayCutoff || null,
+        sameDay: opts.sameDayCutoff || null,
+        sunday: opts.sundayCutoff || null,
+        noSunday: opts.noSunday || false,
+        noSaturday: opts.noSaturday || false,
+      },
+      dateCutoffs: opts.dateCutoffs || {},
+      onChange: opts.onChange || null,
+      beforeShowDay: opts.beforeShowDay || null,
+      initialRender: opts.initialRender || false,
+      _injectedBeforeShowDay: null,
+      _slotDependency: opts.slotDependency || false,
+      calWrap: null,
+      chipEls: [],
+      clockTimer: null,
+    };
+
+    /* ── TZ helpers ── */
+
+    function tzNow() {
+      return new Date(
+        new Date().toLocaleString("en-US", { timeZone: S.timezone }),
+      );
+    }
+    function tzHHMM() {
+      const n = tzNow();
+      return `${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
+    }
+    function isAfter(c) {
+      return c ? tzHHMM() >= c : false;
+    }
+
+    function refreshToday() {
+      const n = tzNow();
+      S.today = { y: n.getFullYear(), m: n.getMonth(), d: n.getDate() };
+      S.todayKey = dateKey(S.today.y, S.today.m, S.today.d);
+    }
+
+    /* ── Date key helpers ── */
+
+    function dateKey(y, mi, d) {
+      return `${y}-${String(mi + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
+    function parseKey(k) {
+      if (!k) return { y: 0, m: 0, d: 0 };
+      const [y, m, d] = k.split("-").map(Number);
+      return { y, m: m - 1, d };
+    }
+    function keyToDisplay(k) {
+      if (!k) return null;
+      const [y, m, d] = k.split("-");
+      return `${d}-${m}-${y}`;
+    }
+
+    function buildDateObj(key, disOverride = null) {
+      if (!key) {
+        return {
+          date: null,
+          dateKey: null,
+          time: tzHHMM(),
+          dayofweek: null,
+          dayIndex: 0,
+          isToday: false,
+          isDisabled: true,
+          year: 0,
+          month: 0,
+          day: 0,
+          monthName: null,
+        };
+      }
+      const { y, m, d } = parseKey(key);
+      const di = new Date(y, m, d).getDay();
+      return {
+        date: keyToDisplay(key),
+        dateKey: key,
+        time: tzHHMM(),
+        dayofweek: DAY_ABBR[di],
+        dayIndex: di,
+        isToday: key === S.todayKey,
+        isDisabled: disOverride !== null ? disOverride : isDayDisabled(key),
+        year: y,
+        month: m + 1,
+        day: d,
+        monthName: MONTH_NAMES[m],
+      };
+    }
+
+    /* ── Disable logic ── */
+
+    function isPast(k) {
+      return k < S.todayKey;
+    }
+
+    function isExplicitlyBlocked(k) {
+      const { y, m, d } = parseKey(k);
+      const dmy = `${String(d).padStart(2, "0")}-${String(m + 1).padStart(2, "0")}-${y}`;
+      if (S.blockedDates.includes(dmy)) return true;
+      if (S.blockedRanges.some((r) => k >= r.start && k <= r.end)) return true;
+      const dow = new Date(y, m, d).getDay();
+      if (S.cutoffs.noSunday && dow === 0) return true;
+      if (S.cutoffs.noSaturday && dow === 6) return true;
+      return false;
+    }
+
+    function isCutoffBlocked(k) {
+      if (isExplicitlyBlocked(k)) return false;
+      const hasCfg =
+        S.cutoffs.sameDay ||
+        S.cutoffs.prevDay ||
+        S.cutoffs.sunday ||
+        Object.keys(S.dateCutoffs).length > 0;
+      if (!hasCfg) return false;
+      const { y, m, d } = parseKey(k);
+      const dow = new Date(y, m, d).getDay();
+      if (k === S.todayKey) {
+        const cut =
+          S.dateCutoffs[k] ||
+          (dow === 0
+            ? S.cutoffs.sunday || S.cutoffs.sameDay
+            : S.cutoffs.sameDay);
+        if (isAfter(cut)) return true;
+      }
+      const tmr = new Date(S.today.y, S.today.m, S.today.d + 1);
+      const tmrKey = dateKey(tmr.getFullYear(), tmr.getMonth(), tmr.getDate());
+      if (k === tmrKey) {
+        const cut =
+          dow === 0 ? S.cutoffs.sunday || S.cutoffs.prevDay : S.cutoffs.prevDay;
+        if (isAfter(cut)) return true;
+      }
+      return false;
+    }
+
+    function isDayDisabled(k) {
+      if (isPast(k)) return true;
+      if (isExplicitlyBlocked(k)) return true;
+      if (isCutoffBlocked(k)) return true;
+      if (S.beforeShowDay) {
+        try {
+          if (S.beforeShowDay(buildDateObj(k, false)) === false) return true;
+        } catch (e) {}
+      }
+      if (S._injectedBeforeShowDay) {
+        try {
+          if (S._injectedBeforeShowDay(buildDateObj(k, false)) === false)
+            return true;
+        } catch (e) {}
+      }
+      return false;
+    }
+
+    function hasDot(k) {
+      if (isDayDisabled(k)) return false;
+      const { y, m, d } = parseKey(k);
+      const dow = new Date(y, m, d).getDay();
+      return !!(
+        S.cutoffs.sameDay ||
+        S.cutoffs.prevDay ||
+        (dow === 0 && S.cutoffs.sunday) ||
+        S.dateCutoffs[k]
+      );
+    }
+
+    function findNext(max = 365) {
+      for (let i = 0; i < max; i++) {
+        const d = new Date(S.today.y, S.today.m, S.today.d + i);
+        const k = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+        if (!isDayDisabled(k)) return k;
+      }
+      return S.todayKey;
+    }
+
+    /* ── Build date row ── */
+
+    function buildDateRow() {
+      if (!daterowEl) return;
+      refreshToday();
+      daterowEl.innerHTML = "";
+      daterowEl.className = "ab-dp-root";
+      daterowEl.style.setProperty("--ab-accent", accent);
+
+      const card = document.createElement("div");
+      card.className = "ab-dr-card";
+      card.innerHTML = `
+        <div class="ab-chips"></div>
+        <div class="ab-footer">
+          <button class="ab-see-full">
+            See Full Calendar
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.6"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <span class="ab-selected-date"></span>
+        </div>
+      `;
+
+      buildChips(card);
+      updateSelectedDateDisplay();
+      const toggleBtn = card.querySelector(".ab-see-full");
+      if (S.isOpen) toggleBtn.classList.add("ab-open");
+      toggleBtn.addEventListener("click", toggleCal);
+
+      S.calWrap = buildCalPanel(S.calMode);
+      if (S.isOpen) S.calWrap.classList.add("ab-open");
+      card.appendChild(S.calWrap);
+
+      daterowEl.appendChild(card);
+      startClock();
+    }
+
+    function updateSelectedDateDisplay() {
+      const el = daterowEl && daterowEl.querySelector(".ab-selected-date");
+      if (!el || !S.selected) return;
+
+      // ✅ Hide if selected date is inside visible chips
+      const isInChips = S.chipEls.some(
+        (chip) => chip.dataset.key === S.selected,
+      );
+
+      if (isInChips) {
+        el.textContent = "";
+        el.style.display = "none";
+        return;
+      }
+
+      const { y, m, d } = parseKey(S.selected);
+      const date = new Date(y, m, d);
+      const dayName = DAY_ABBR[date.getDay()];
+      const monthName = MONTH_NAMES[m];
+
+      el.textContent = `${dayName}, ${d} ${monthName} ${y}`;
+      el.style.display = "";
+    }
+
+    function buildChips(card) {
+      S.chipEls = [];
+      const wrap = card.querySelector(".ab-chips");
+      const now = tzNow();
+      for (let i = 0; i < 7; i++) {
+        const cd = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate() + i,
+        );
+        const k = dateKey(cd.getFullYear(), cd.getMonth(), cd.getDate());
+        const isTd = k === S.todayKey;
+        const dis = isDayDisabled(k);
+        const dot = !dis && hasDot(k);
+        const chip = document.createElement("div");
+        chip.dataset.key = k;
+        chip.innerHTML = `
+          <span class="ab-dow">${DAY_ABBR[cd.getDay()]}</span>
+          <span class="ab-dom">${cd.getDate()}</span>
+          ${dot ? '<span class="ab-chip-dot"></span>' : ""}
+        `;
+        applyChipCls(chip, k, isTd, dis);
+        S.chipEls.push(chip);
+        if (!dis) {
+          chip.addEventListener("click", () => {
+            S.selected = k;
+            // Update calendar month to selected date for both inline and popup modes
+            S.calYear = cd.getFullYear();
+            S.calMonth = cd.getMonth();
+            if (S.calWrap) {
+              buildCalGrid(S.calWrap);
+              syncPrev(S.calWrap);
+            }
+            closeCal();
+            refreshChips();
+            if (S.calWrap) syncSelBar(S.calWrap);
+            updateSelectedDateDisplay();
+            if (S.onChange)
+              S.onChange({ type: "single", ...buildDateObj(k, false) });
+          });
+        }
+        wrap.appendChild(chip);
+      }
+    }
+
+    function applyChipCls(el, k, isTd, dis) {
+      const sel = k === S.selected;
+      el.className = [
+        "ab-chip",
+        dis && isTd ? "ab-dis ab-today-dis" : "",
+        dis && !isTd ? "ab-dis" : "",
+        !dis && isTd ? "ab-today" : "",
+        !dis && sel ? "ab-sel" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+
+    function refreshChips() {
+      refreshToday();
+      S.chipEls.forEach((chip) => {
+        const k = chip.dataset.key;
+        applyChipCls(chip, k, k === S.todayKey, isDayDisabled(k));
+      });
+    }
+
+    /* ── Calendar panel ── */
+
+    function buildCalPanel(type) {
+      const isPop = type === "popup";
+      const wrap = document.createElement("div");
+      wrap.className = isPop ? "ab-popup-wrap" : "ab-inline-wrap";
+      wrap.dataset.calPanel = "1";
+      const body = `
+        <div class="ab-cal-panel">
+          <div class="ab-cal-nav">
+            <button class="ab-nav-btn ab-prev" aria-label="Previous month">
+              <svg width="7" height="12" viewBox="0 0 7 12" fill="none">
+                <path d="M6 1L1 6l5 5" stroke="currentColor" stroke-width="1.6"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <span class="ab-month-label"></span>
+            <button class="ab-nav-btn ab-next" aria-label="Next month">
+              <svg width="7" height="12" viewBox="0 0 7 12" fill="none">
+                <path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.6"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="ab-cal-grid"></div>
+        </div>
+        <div class="ab-sel-bar"><span class="ab-sb-l">Selected</span><span class="ab-sb-v">—</span></div>
+      `;
+      wrap.innerHTML = isPop
+        ? body
+        : `<div class="ab-inline-inner"><div class="ab-hr"></div>${body}</div>`;
+      wrap.querySelector(".ab-prev").addEventListener("click", () => {
+        if (atMin()) return;
+        S.calMonth--;
+        if (S.calMonth < 0) {
+          S.calMonth = 11;
+          S.calYear--;
+        }
+        buildCalGrid(wrap);
+        syncPrev(wrap);
+      });
+      wrap.querySelector(".ab-next").addEventListener("click", () => {
+        S.calMonth++;
+        if (S.calMonth > 11) {
+          S.calMonth = 0;
+          S.calYear++;
+        }
+        buildCalGrid(wrap);
+        syncPrev(wrap);
+      });
+      buildCalGrid(wrap);
+      syncPrev(wrap);
+      return wrap;
+    }
+
+    function atMin() {
+      return (
+        S.calYear < S.today.y ||
+        (S.calYear === S.today.y && S.calMonth <= S.today.m)
+      );
+    }
+
+    function syncPrev(wrap) {
+      const btn = wrap.querySelector(".ab-prev");
+      if (!btn) return;
+      const at = atMin();
+      btn.disabled = at;
+      btn.style.opacity = at ? "0.3" : "";
+      btn.style.cursor = at ? "not-allowed" : "";
+      btn.style.pointerEvents = at ? "none" : "";
+    }
+
+    function buildCalGrid(wrap) {
+      const y = S.calYear,
+        m = S.calMonth;
+      const lbl = wrap.querySelector(".ab-month-label");
+      if (lbl) lbl.textContent = `${MONTH_NAMES[m]} ${y}`;
+      const grid = wrap.querySelector(".ab-cal-grid");
+      if (!grid) return;
+      grid.innerHTML = "";
+      DAY_ABBR.forEach((a) => {
+        const h = document.createElement("div");
+        h.className = "ab-g-dow";
+        h.textContent = a;
+        grid.appendChild(h);
+      });
+      const fc = new Date(y, m, 1).getDay();
+      for (let i = 0; i < fc; i++) {
+        const e = document.createElement("div");
+        e.className = "ab-cell ab-cell-empty";
+        grid.appendChild(e);
+      }
+      const days = new Date(y, m + 1, 0).getDate();
+      for (let day = 1; day <= days; day++) {
+        const k = dateKey(y, m, day);
+        const past = isPast(k),
+          dis = !past && isDayDisabled(k),
+          dot = !past && !dis && hasDot(k);
+        const cell = document.createElement("div");
+        cell.dataset.key = k;
+        cell.innerHTML = `<span class="ab-cn">${day}</span>${dot ? '<span class="ab-cell-dot"></span>' : ""}`;
+        applyCellCls(cell, k, past, dis);
+        if (!past && !dis)
+          cell.addEventListener("click", () => onCellClick(k, wrap));
+        grid.appendChild(cell);
+      }
+      const tot = fc + days,
+        trail = tot % 7 === 0 ? 0 : 7 - (tot % 7);
+      for (let i = 0; i < trail; i++) {
+        const e = document.createElement("div");
+        e.className = "ab-cell ab-cell-empty";
+        grid.appendChild(e);
+      }
+      syncSelBar(wrap);
+      syncPrev(wrap);
+    }
+
+    function patchCalGrid(wrap) {
+      if (!wrap) return;
+      refreshToday();
+      wrap.querySelectorAll(".ab-cell:not(.ab-cell-empty)").forEach((cell) => {
+        const k = cell.dataset.key,
+          past = isPast(k);
+        applyCellCls(cell, k, past, !past && isDayDisabled(k));
+      });
+      syncSelBar(wrap);
+    }
+
+    function applyCellCls(el, k, past, dis) {
+      const sel = k === S.selected,
+        isTd = k === S.todayKey;
+      el.className = [
+        "ab-cell",
+        past ? "ab-cc-past" : "",
+        !past && dis && isTd ? "ab-cc-dis ab-cc-today-dis" : "",
+        !past && dis && !isTd ? "ab-cc-dis" : "",
+        !past && !dis && sel ? "ab-cc-sel" : "",
+        !past && !dis && isTd && !sel ? "ab-cc-today" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+
+    function onCellClick(k, wrap) {
+      S.selected = k;
+
+      const { y, m } = parseKey(k);
+      S.calYear = y;
+      S.calMonth = m;
+
+      if (S.calMode === "inline") {
+        buildCalGrid(wrap);
+        syncPrev(wrap);
+      } else {
+        patchCalGrid(wrap);
+        buildCalGrid(wrap);
+        syncPrev(wrap);
+      }
+
+      refreshChips();
+      closeCal();
+      updateSelectedDateDisplay();
+
+      if (S.onChange) {
+        S.onChange({ type: "single", ...buildDateObj(k, false) });
+      }
+    }
+
+    function syncSelBar(wrap) {
+      if (!wrap) return;
+      const bar = wrap.querySelector(".ab-sel-bar"),
+        val = wrap.querySelector(".ab-sb-v");
+      if (!bar || !val) return;
+      if (S.selected) {
+        bar.classList.add("ab-on");
+        val.textContent = keyToDisplay(S.selected);
+      } else {
+        bar.classList.remove("ab-on");
+      }
+    }
+
+    /* ── Open/close ── */
+
+    function toggleCal() {
+      S.isOpen ? closeCal() : openCal();
+    }
+
+    function openCal() {
+      S.isOpen = true;
+      if (!S.calWrap) return;
+      S.calWrap.classList.add("ab-open");
+      const btn = daterowEl && daterowEl.querySelector(".ab-see-full");
+      if (btn) btn.classList.add("ab-open");
+      patchCalGrid(S.calWrap);
+      syncPrev(S.calWrap);
+      if (S.calMode === "popup")
+        setTimeout(() => document.addEventListener("click", onOutside), 0);
+    }
+
+    function closeCal() {
+      if (!S.isOpen) return;
+      S.isOpen = false;
+      if (S.calWrap) S.calWrap.classList.remove("ab-open");
+      const btn = daterowEl && daterowEl.querySelector(".ab-see-full");
+      if (btn) btn.classList.remove("ab-open");
+      document.removeEventListener("click", onOutside);
+    }
+
+    function onOutside(e) {
+      const card = daterowEl && daterowEl.querySelector(".ab-dr-card");
+      if (card && !card.contains(e.target)) closeCal();
+    }
+
+    /* ── Clock ── */
+
+    function startClock() {
+      function tick() {
+        const t = tzNow().toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+        if (clockEl) clockEl.textContent = t;
+      }
+      tick();
+      clearInterval(S.clockTimer);
+      S.clockTimer = setInterval(tick, 1000);
+    }
+
+    /* ── Reload ── */
+
+    function reload() {
+      refreshToday();
+      S.calYear = S.today.y;
+      S.calMonth = S.today.m;
+      if (S.selected && isDayDisabled(S.selected)) S.selected = null;
+      buildDateRow();
+    }
+
+    /* ── Init ── */
+
+    refreshToday();
+    S.selected = isDayDisabled(S.todayKey) ? findNext() : S.todayKey;
+    // Set calendar to selected date's month, not today's month
+    if (S.selected) {
+      const { y, m } = parseKey(S.selected);
+      S.calYear = y;
+      S.calMonth = m;
+    } else {
+      S.calYear = S.today.y;
+      S.calMonth = S.today.m;
+    }
+    buildDateRow();
+
+    if (S.initialRender && S.selected && S.onChange) {
+  requestAnimationFrame(() => {
+    S.onChange({ type: 'single', ...buildDateObj(S.selected, false) });
+  });
+}
+
+    /* ── Public API ── */
+
+    return {
+      getSelected() {
+        return keyToDisplay(S.selected);
+      },
+      setCalMode(mode) {
+        S.calMode = mode;
+        closeCal();
+        reload();
+      },
+      open() {
+        openCal();
+      },
+      close() {
+        closeCal();
+      },
+      addBlockedDate(dmy) {
+        S.blockedDates.push(dmy);
+        reload();
+      },
+      clearBlockedDates() {
+        S.blockedDates = [];
+        reload();
+      },
+      reload,
+      _injectBeforeShowDay(fn) {
+        S._injectedBeforeShowDay = fn;
+        reload();
+      },
+      get _slotDependency() {
+        return S._slotDependency;
+      },
+      _selectDate(k) {
+        if (!k || S.selected === k) return;
+        S.selected = k;
+        const { y, m } = parseKey(k);
+        S.calYear = y;
+        S.calMonth = m;
+        buildDateRow();
+        if (S.onChange)
+          S.onChange({ type: "single", ...buildDateObj(k, false) });
+      },
+    };
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     AbTimeslot
+  ═══════════════════════════════════════════════════════════════════════ */
+
+  function createTimeslotInstance(opts) {
+    const containerEl = document.getElementById(opts.containerId);
+    if (!containerEl) {
+      console.error("[AbTimeslot] containerId not found:", opts.containerId);
+      return null;
+    }
+
+    const S = {
+      timezone: opts.timezone || _sharedTimezone,
+      closesSoonMins: opts.closesSoonMins != null ? opts.closesSoonMins : 120,
+      noSlotsText:
+        opts.noSlotsText || "No delivery slots available for this date.",
+      slots: opts.slots || [],
+      blockSlotsByDate: normalizeDateKeys(opts.blockSlotsByDate),
+      blockSlots: opts.blockSlots || [],
+      weekdayRules: opts.weekdayRules || {},
+      rules: opts.rules || [],
+      onChange: opts.onChange || null,
+      currentDateKey: null,
+      selectedSlotId: null,
+      _onRender: null,
+      _advancing: false,
+      _refreshTimer: null,
+    };
+
+    const DOW_NAMES = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ];
+
+    /* ── TZ helpers ── */
+
+    function tzNow() {
+      return new Date(
+        new Date().toLocaleString("en-US", { timeZone: S.timezone }),
+      );
+    }
+    function tzHHMM() {
+      const n = tzNow();
+      return `${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
+    }
+    function todayKey() {
+      const n = tzNow();
+      return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+    }
+    function getDOW(k) {
+      if (!k) return 0;
+      const [y, m, d] = k.split("-").map(Number);
+      return new Date(y, m - 1, d).getDay();
+    }
+    function isAfter(c) {
+      return c ? tzHHMM() >= c : false;
+    }
+    function minsLeft(c) {
+      if (!c) return Infinity;
+      const [ch, cm] = c.split(":").map(Number),
+        [nh, nm] = tzHHMM().split(":").map(Number);
+      return ch * 60 + cm - (nh * 60 + nm);
+    }
+
+    function normalizeKey(raw) {
+      if (!raw) return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+      if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) {
+        const [dd, mm, yyyy] = raw.split("-");
+        return `${yyyy}-${mm}-${dd}`;
+      }
+      return raw;
+    }
+
+    function normalizeDateKeys(obj) {
+      if (!obj) return {};
+      const out = {};
+      Object.entries(obj).forEach(([k, v]) => {
+        out[normalizeKey(k) || k] = v;
+      });
+      return out;
+    }
+
+    function addDays(k, n) {
+      if (!k) return null;
+      const [y, m, d] = k.split("-").map(Number);
+      const t = new Date(y, m - 1, d + n);
+      return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+    }
+
+    /* ── Status engine ──────────────────────────────────────────────────────
+       PRECEDENCE: rules[] > blockSlotsByDate > weekdayRules > slot defaults
+
+       1. cfg seeded from slot defaults
+       2. blockSlotsByDate merges into cfg (or returns early)
+       3. weekdayRules merges into cfg (skipped if date override exists)
+       4. rules[] run LAST — see merged cfg, can override EVERYTHING
+       5. Final time checks read from (possibly rule-modified) cfg
+    ──────────────────────────────────────────────────────────────────────── */
+
+    function computeStatus(slot, dk) {
+      if (!dk) return "hidden";
+
+      const today = todayKey();
+      const isTd = dk === today;
+      const isTmr = dk === addDays(today, 1);
+      const dow = getDOW(dk);
+      const dowNm = DOW_NAMES[dow];
+      const now = tzHHMM();
+
+      // cfg — starts from slot defaults, mutated by overrides and rules
+      const cfg = {
+        hidden: false,
+        unavailable: false,
+        samedayCutoff: slot.samedayCutoff || null,
+        prevdayCutoff: slot.prevdayCutoff || null,
+        showFrom: slot.showFrom || null,
+        showUntil: slot.showUntil || null,
+        _forceOpen: false,
+      };
+
+      // Hard kills
+      if (!slot.open) return "hidden";
+      if (S.blockSlots.includes(slot.id)) return "hidden";
+
+      // blockSlotsByDate — merged first (lower precedence than rules)
+      const dateOvr = (S.blockSlotsByDate[dk] || {})[slot.id];
+      if (dateOvr !== undefined) {
+        const r = applyOverride(cfg, dateOvr);
+        if (r !== null) return r;
+      }
+
+      // weekdayRules — only when no date override
+      if (dateOvr === undefined) {
+        const wdOvr = resolveWDRule(dow, dowNm, slot.id);
+        if (wdOvr !== undefined) {
+          const r = applyOverride(cfg, wdOvr);
+          if (r !== null) return r;
+        }
+      }
+
+      // rules[] — LAST, most powerful, sees the merged cfg
+      // IMPORTANT for callers: if you set cfg.samedayCutoff in a rule for a slot
+      // that has prevdayCutoff, you must ALSO set cfg.prevdayCutoff = null
+      // (object overrides auto-clear it; rule callbacks do not).
+      const ctx = {
+        slot,
+        dateKey: dk,
+        dow,
+        dowName: dowNm,
+        isToday: isTd,
+        isTomorrow: isTmr,
+        now,
+        cfg,
+      };
+      for (const rule of S.rules) {
+        try {
+          const r = rule(ctx);
+          if (r === false) return "hidden";
+          if (cfg.hidden) return "hidden";
+          if (cfg._forceOpen) return "available";
+          if (cfg.unavailable) return "unavailable";
+        } catch (e) {
+          console.error("[AbTimeslot] rule error:", e);
+        }
+      }
+
+      // prevdayCutoff check
+      if (cfg.prevdayCutoff) {
+        const deadline = addDays(dk, -1);
+        if (today >= dk) return "unavailable";
+        if (today === deadline && isAfter(cfg.prevdayCutoff))
+          return "unavailable";
+      }
+
+      // showFrom / showUntil (today only)
+      if (isTd) {
+        if (cfg.showFrom && now < cfg.showFrom) return "hidden";
+        if (cfg.showUntil && now >= cfg.showUntil) return "hidden";
+      }
+
+      // samedayCutoff (today only)
+      if (cfg.samedayCutoff && isTd) {
+        if (isAfter(cfg.samedayCutoff)) return "unavailable";
+        if (minsLeft(cfg.samedayCutoff) <= S.closesSoonMins)
+          return "closes_soon";
+      }
+
+      // prevdayCutoff closes-soon (deadline = day before slot date)
+      if (cfg.prevdayCutoff) {
+        const deadline = addDays(dk, -1);
+        if (today === deadline && !isAfter(cfg.prevdayCutoff)) {
+          if (minsLeft(cfg.prevdayCutoff) <= S.closesSoonMins)
+            return "closes_soon";
+        }
+      }
+
+      return "available";
+    }
+
+    function applyOverride(cfg, ov) {
+      if (ov === false || ov === null) return "hidden";
+      if (ov === "force") return "available";
+      if (ov === "open") {
+        cfg.prevdayCutoff = null;
+        return null;
+      }
+      if (typeof ov === "string") {
+        cfg.samedayCutoff = ov;
+        cfg.prevdayCutoff = null;
+        return null;
+      }
+      if (typeof ov === "object") {
+        const hs = "samedayCutoff" in ov,
+          hp = "prevdayCutoff" in ov;
+        if ("hidden" in ov) cfg.hidden = ov.hidden;
+        if ("unavailable" in ov) cfg.unavailable = ov.unavailable;
+        if (hs) cfg.samedayCutoff = ov.samedayCutoff;
+        if (hp) cfg.prevdayCutoff = ov.prevdayCutoff;
+        else if (hs) cfg.prevdayCutoff = null;
+        if ("showFrom" in ov) cfg.showFrom = ov.showFrom;
+        if ("showUntil" in ov) cfg.showUntil = ov.showUntil;
+        if (cfg.hidden) return "hidden";
+        if (cfg.unavailable) return "unavailable";
+      }
+      return null;
+    }
+
+    function resolveWDRule(dow, dowNm, slotId) {
+      const entry =
+        S.weekdayRules[dowNm] ||
+        S.weekdayRules[dowNm.charAt(0).toUpperCase() + dowNm.slice(1)] ||
+        S.weekdayRules[dow];
+      if (!entry) return undefined;
+      if (Array.isArray(entry))
+        return entry.includes(slotId) ? false : undefined;
+      return slotId in entry ? entry[slotId] : undefined;
+    }
+
+    function dateHasSlots(dk) {
+      return S.slots.some((slot) => {
+        const s = computeStatus(slot, dk);
+        return s === "available" || s === "closes_soon";
+      });
+    }
+
+    /* ── Timer for auto-refresh ────────────────────────────────────────────
+       Automatically refresh slot statuses every 30 seconds so badge can
+       move dynamically when slots become unavailable.
+    ──────────────────────────────────────────────────────────────────────── */
+
+    function _startRefreshTimer() {
+      _stopRefreshTimer(); // Clear any existing timer
+      // Only start timer if we have a current date and slots
+      if (!S.currentDateKey || S.slots.length === 0) return;
+
+      S._refreshTimer = setInterval(() => {
+        // Check if we need to refresh (only if current date is today or tomorrow)
+        const today = todayKey();
+        const tomorrow = addDays(today, 1);
+        if (S.currentDateKey === today || S.currentDateKey === tomorrow) {
+          render(); // Re-render to update statuses
+        }
+      }, 30000); // 30 seconds
+    }
+
+    function _stopRefreshTimer() {
+      if (S._refreshTimer) {
+        clearInterval(S._refreshTimer);
+        S._refreshTimer = null;
+      }
+    }
+
+    /* ── Render ─────────────────────────────────────────────────────────────
+       "Closes Soon" badge appears ONLY on the first bookable slot.
+       If that slot is unavailable/hidden the badge moves to the next one.
+       Auto-selects first bookable slot when nothing is selected.
+    ──────────────────────────────────────────────────────────────────────── */
+
+    function findFirstAvailableDate(startFromToday = true) {
+      const startKey = startFromToday ? todayKey() : S.currentDateKey;
+      if (!startKey) return null;
+      // Look ahead up to 60 days
+      for (let i = 0; i < 60; i++) {
+        const checkKey = addDays(startKey, i);
+        if (!checkKey) continue;
+        if (dateHasSlots(checkKey)) return checkKey;
+      }
+      return null;
+    }
+
+    function render() {
+      containerEl.innerHTML = "";
+      containerEl.className = "ab-ts-grid";
+      if (!S.currentDateKey) return;
+
+      // Pre-compute all statuses
+      const computed = S.slots.map((slot) => ({
+        slot,
+        status: computeStatus(slot, S.currentDateKey),
+      }));
+
+      // Find first available date (starting from today)
+      const firstAvailableDateKey = findFirstAvailableDate(true);
+
+      // Find first available slot on this date
+      let firstAvailableSlotId = null;
+      if (S.currentDateKey === firstAvailableDateKey) {
+        const firstSlot = computed.find(
+          ({ status }) => status === "available" || status === "closes_soon",
+        );
+        firstAvailableSlotId = firstSlot ? firstSlot.slot.id : null;
+      }
+
+      let clickable = 0,
+        firstSlot = null,
+        firstChip = null;
+
+      computed.forEach(({ slot, status }) => {
+        if (status === "hidden") return;
+
+        // Badge only on first available slot of first available date
+        const badge = firstAvailableSlotId && slot.id === firstAvailableSlotId;
+
+        const chip = document.createElement("div");
+        chip.className = "ab-ts-chip";
+        chip.dataset.slotId = slot.id;
+        chip.dataset.status = status;
+
+        chip.innerHTML = `
+          ${badge ? '<span class="ab-ts-badge">Closes Soon</span>' : ""}
+          <span class="ab-ts-label">${slot.label}</span>
+          ${
+            status === "unavailable"
+              ? '<span class="ab-ts-unavail">Unavailable</span>'
+              : `<span class="ab-ts-time">${slot.timeRange}</span>`
+          }
+        `;
+
+        if (status === "unavailable") chip.classList.add("ab-ts-dis");
+
+        if (slot.id === S.selectedSlotId && status !== "unavailable") {
+          chip.classList.add("ab-ts-sel");
+        }
+
+        if (status !== "unavailable") {
+          clickable++;
+          if (!firstSlot) {
+            firstSlot = slot;
+            firstChip = chip;
+          }
+          chip.addEventListener("click", () => {
+            S.selectedSlotId = slot.id;
+            containerEl
+              .querySelectorAll(".ab-ts-chip")
+              .forEach((c) => c.classList.remove("ab-ts-sel"));
+            chip.classList.add("ab-ts-sel");
+            if (S.onChange)
+              S.onChange({ dateKey: S.currentDateKey, slot, status });
+          });
+        }
+
+        containerEl.appendChild(chip);
+      });
+
+      if (clickable === 0) {
+        containerEl.classList.add("ab-ts-empty");
+        containerEl.innerHTML = `<div class="ab-ts-no-slots">${S.noSlotsText}</div>`;
+        S.selectedSlotId = null;
+      } else {
+        containerEl.classList.remove("ab-ts-empty");
+
+        // Auto-select first bookable slot when nothing selected
+        if (!S.selectedSlotId && firstSlot && firstChip) {
+          S.selectedSlotId = firstSlot.id;
+          firstChip.classList.add("ab-ts-sel");
+          if (S.onChange) {
+            const cap = {
+              slot: firstSlot,
+              status: firstChip.dataset.status,
+              key: S.currentDateKey,
+            };
+            setTimeout(
+              () =>
+                S.onChange({
+                  dateKey: cap.key,
+                  slot: cap.slot,
+                  status: cap.status,
+                }),
+              0,
+            );
+          }
+        }
+      }
+
+      // Start refresh timer if current date is today or tomorrow
+      const today = todayKey();
+      const tomorrow = addDays(today, 1);
+      if (S.currentDateKey === today || S.currentDateKey === tomorrow) {
+        _startRefreshTimer();
+      } else {
+        _stopRefreshTimer();
+      }
+
+      if (S._onRender) setTimeout(() => S._onRender(clickable > 0), 0);
+    }
+
+    /* ── Public API ── */
+
+    return {
+      setDate(raw) {
+        const k = normalizeKey(raw);
+        if (!k) return;
+        S.currentDateKey = k;
+        S.selectedSlotId = null;
+        render();
+        _startRefreshTimer();
+      },
+      getSelected() {
+        if (!S.selectedSlotId || !S.currentDateKey) return null;
+        const slot = S.slots.find((s) => s.id === S.selectedSlotId);
+        return slot ? { dateKey: S.currentDateKey, slot } : null;
+      },
+      clearSelection() {
+        S.selectedSlotId = null;
+        containerEl
+          .querySelectorAll(".ab-ts-chip")
+          .forEach((c) => c.classList.remove("ab-ts-sel"));
+      },
+      refresh() {
+        render();
+      },
+      hasAvailableSlots(raw) {
+        return dateHasSlots(normalizeKey(raw));
+      },
+
+      setSlots(arr) {
+        S.slots = arr || [];
+        S.selectedSlotId = null;
+        render();
+      },
+      patchSlot(id, patch) {
+        const s = S.slots.find((x) => x.id === id);
+        if (s) Object.assign(s, patch);
+        render();
+      },
+
+      setBlockSlots(arr) {
+        S.blockSlots = arr || [];
+        render();
+      },
+      addBlockSlots(...ids) {
+        ids.flat().forEach((id) => {
+          if (!S.blockSlots.includes(id)) S.blockSlots.push(id);
+        });
+        render();
+      },
+      removeBlockSlots(...ids) {
+        ids.flat().forEach((id) => {
+          S.blockSlots = S.blockSlots.filter((x) => x !== id);
+        });
+        render();
+      },
+
+      setBlockSlotsByDate(obj) {
+        S.blockSlotsByDate = normalizeDateKeys(obj);
+        render();
+      },
+      addBlockSlotsByDate(obj) {
+        const n = normalizeDateKeys(obj);
+        Object.entries(n).forEach(([date, ovr]) => {
+          S.blockSlotsByDate[date] = Object.assign(
+            S.blockSlotsByDate[date] || {},
+            ovr,
+          );
+        });
+        render();
+      },
+
+      setWeekdayRules(obj) {
+        S.weekdayRules = obj || {};
+        render();
+      },
+      addWeekdayRules(obj) {
+        Object.entries(obj || {}).forEach(([dow, r]) => {
+          S.weekdayRules[dow] = Object.assign(S.weekdayRules[dow] || {}, r);
+        });
+        render();
+      },
+
+      setRules(arr) {
+        S.rules = arr || [];
+        render();
+      },
+      addRule(fn) {
+        S.rules.push(fn);
+        render();
+      },
+
+      linkDatepicker(picker, options) {
+        const enabled =
+          (options && options.slotDependency != null
+            ? options.slotDependency
+            : false) ||
+          (picker && picker._slotDependency);
+        if (!enabled) return;
+
+        const lookAhead = (options && options.lookAheadDays) || 60;
+
+        if (typeof picker._injectBeforeShowDay === "function") {
+          picker._injectBeforeShowDay((dateObj) =>
+            dateHasSlots(dateObj.dateKey),
+          );
+        }
+
+        function findNext() {
+          const t = todayKey();
+          for (let i = 0; i <= lookAhead; i++) {
+            const c = addDays(t, i);
+            if (dateHasSlots(c)) return c;
+          }
+          return null;
+        }
+
+        S._onRender = (hasSlots) => {
+          if (hasSlots || S._advancing) return;
+          const next = findNext();
+          if (!next) return;
+          S._advancing = true;
+          if (typeof picker._selectDate === "function")
+            picker._selectDate(next);
+          setTimeout(() => {
+            S._advancing = false;
+          }, 0);
+        };
+
+        setTimeout(() => {
+          if (S._onRender)
+            S._onRender(
+              S.currentDateKey ? dateHasSlots(S.currentDateKey) : false,
+            );
+        }, 0);
+      },
+    };
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     EXPORTS
+  ═══════════════════════════════════════════════════════════════════════ */
+
+  global.AbDatepicker = { init: createDatepickerInstance };
+  global.AbTimeslot = { init: createTimeslotInstance };
+})(window);

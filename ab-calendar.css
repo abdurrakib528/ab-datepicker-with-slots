@@ -1,0 +1,644 @@
+@import url("https://fonts.googleapis.com/css2?family=Lato:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap");
+
+/* ════════════════════════════════════════════════════════════════════
+   ab-calendar.css  v2.4
+   Styles for AbDatepicker + AbTimeslot
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Reset scoped to the picker root ─────────────────────────────── */
+.ab-dp-root *,
+.ab-dp-root *::before,
+.ab-dp-root *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Design tokens ────────────────────────────────────────────────── */
+.ab-datepicker-section {
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 14px;
+  color: #1a1c1a;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+
+  --ab-accent: #3a8b6b;
+  --ab-accent-dark: #2d7055;
+  --ab-accent-light: #edf6f2;
+  --ab-accent-text: #fff;
+
+  --ab-bg: #fff;
+  --ab-bg-subtle: #f7f8f7;
+  --ab-border: #e4e6e4;
+
+  --ab-text: #1a1c1a;
+  --ab-text-muted: #767976;
+  --ab-text-faint: #b4b8b4;
+  --ab-blocked: #c4c8c4;
+  --ab-dot: #e05252;
+
+  --ab-today-chip: #9ca39c;
+
+  --ab-shadow: 0 2px 12px rgba(0, 0, 0, 0.07), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  --ab-shadow-popup:
+    0 8px 32px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --ab-radius: 12px;
+
+  --ab-chip-w: 42px;
+  --ab-chip-h: 60px;
+  --ab-cell: 32px;
+  --ab-card-w: 100%;
+  --ab-t: 0.12s ease;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   CARD
+   ════════════════════════════════════════════════════════════════════ */
+.ab-datepicker-section {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  gap: 24px;
+  max-width: 700px;
+  margin: auto;
+}
+
+.ab-datepicker-header,
+.ab-timeslot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 10px 16px;
+  background: #f7f8f7;
+  border-bottom: 1px solid #e4e6e4;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #3a8b6b;
+  border-radius: var(--ab-radius) var(--ab-radius) 0 0;
+}
+
+.ab-datepicker-header p,
+.ab-datepicker-header span,
+.ab-timeslot-wrapper p {
+  margin: 0px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.ab-datepicker-wrapper,
+.ab-timeslot-wrapper {
+  width: var(--ab-card-w);
+  background: var(--ab-bg);
+  border-radius: var(--ab-radius);
+  box-shadow: var(--ab-shadow);
+  overflow: visible;
+  position: relative;
+  /* padding: 10px 15px; */
+}
+/* ════════════════════════════════════════════════════════════════════
+   HEADER ROW
+   ════════════════════════════════════════════════════════════════════ */
+.ab-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 16px 8px;
+}
+
+.ab-heading-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ab-text);
+  letter-spacing: -0.01em;
+}
+
+.ab-clock {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ab-accent);
+  min-width: 74px;
+  text-align: right;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   DATE-ROW CHIP STRIP
+   ════════════════════════════════════════════════════════════════════ */
+.ab-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  justify-content: space-between;
+  padding: 0px 10px;
+}
+.ab-chips::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Base chip ── */
+
+.ab-chip {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 10px 5px;
+  border-radius: 6px;
+  border: 1px solid var(--ab-border);
+  cursor: pointer;
+  transition:
+    background var(--ab-t),
+    border-color var(--ab-t);
+  flex-shrink: 0;
+  position: relative;
+  color: var(--ab-text);
+}
+
+.ab-dow {
+  font-size: 14px;
+  font-weight: 400;
+  color: inherit;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.ab-dom {
+  font-size: 16px;
+  font-weight: 600;
+  color: inherit;
+  line-height: 1;
+}
+
+/* Today chip */
+.ab-chip.ab-today,
+.ab-cc-today {
+  border: 1px solid #dad55ecc;
+  /* background: #fffa9042; */
+  color: #777620;
+}
+
+/* Selected chip */
+.ab-chip.ab-sel {
+  border-color: var(--ab-accent);
+  background: var(--ab-accent);
+  color: var(--ab-accent-light);
+}
+
+/* Today + selected */
+
+/* Hover states */
+.ab-chip:hover:not(.ab-dis) {
+  border-color: var(--ab-accent);
+}
+
+/* .ab-chip.ab-today:not(.ab-sel):hover {
+  background: var(--ab-today-chip);
+}
+.ab-chip.ab-today.ab-sel:hover {
+  background: var(--ab-accent-dark);
+} */
+
+/* Disabled chip — today with no slots gets only .ab-dis + .ab-today-dis,
+   never .ab-today, so gray always wins over green. */
+.ab-chip.ab-dis {
+  opacity: 0.32;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.ab-chip.ab-today-dis {
+  border-color: color-mix(in srgb, var(--ab-accent) 30%, transparent);
+}
+
+/* Cutoff indicator dot */
+.ab-chip-dot {
+  position: absolute;
+  bottom: 7px;
+  width: 4px;
+  height: 4px;
+  background: var(--ab-dot);
+  border-radius: 50%;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   FOOTER
+   ════════════════════════════════════════════════════════════════════ */
+.ab-footer {
+  border-top: 1px solid var(--ab-border);
+  margin-top: 8px;
+  padding: 8px 10px;
+}
+
+.ab-see-full {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  color: #e89db1;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: opacity var(--ab-t);
+  min-height: auto;
+  height: auto;
+}
+.ab-see-full:hover {
+  opacity: 0.85;
+}
+.ab-see-full svg {
+  transition: transform 0.2s ease;
+}
+.ab-see-full.ab-open svg {
+  transform: rotate(180deg);
+}
+
+.ab-selected-date {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ab-text);
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+.ab-selected-date {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ab-text);
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   INLINE CALENDAR — animated accordion
+   ════════════════════════════════════════════════════════════════════ */
+.ab-inline-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.22s cubic-bezier(0.22, 0.8, 0.36, 1);
+}
+.ab-inline-wrap.ab-open {
+  grid-template-rows: 1fr;
+}
+
+.ab-inline-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   POPUP CALENDAR
+   ════════════════════════════════════════════════════════════════════ */
+.ab-popup-wrap {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  width: 380px;
+  background: var(--ab-bg);
+  border-radius: var(--ab-radius);
+  box-shadow: var(--ab-shadow-popup);
+  z-index: 9999;
+  overflow: hidden;
+  animation: ab-pop-in 0.2s cubic-bezier(0.22, 0.8, 0.36, 1);
+}
+.ab-popup-wrap.ab-open {
+  display: block;
+}
+
+@keyframes ab-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   CALENDAR PANEL (shared by inline + popup)
+   ════════════════════════════════════════════════════════════════════ */
+.ab-hr {
+  height: 1px;
+  background: var(--ab-border);
+}
+
+/* .ab-cal-panel {
+  padding: 16px;
+} */
+
+/* Month navigation row */
+.ab-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 13px;
+  padding-block: 10px;
+  border-bottom: 1px solid var(--ab-border);
+  background-color: #f7f8f7;
+}
+
+.ab-nav-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--ab-text-muted);
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ab-text-muted);
+  transition: background var(--ab-t);
+  flex-shrink: 0;
+}
+
+.ab-nav-btn:hover:not(:disabled) {
+  background: var(--ab-accent);
+  color: var(--ab-accent-text);
+}
+
+.ab-month-label {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ab-text);
+}
+
+/* 7-column grid */
+.ab-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  padding-block: 10px;
+  gap: 4px;
+}
+
+.ab-g-dow {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ab-text-muted);
+  padding-bottom: 10px;
+  letter-spacing: 0.03em;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   CALENDAR CELLS
+   ════════════════════════════════════════════════════════════════════ */
+.ab-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--ab-cell);
+  width: var(--ab-cell);
+  line-height: 10;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ab-text);
+  cursor: pointer;
+  border-radius: 50%;
+  transition:
+    background var(--ab-t),
+    color var(--ab-t);
+  margin: auto;
+}
+.ab-cell span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+.ab-cell.ab-cell-empty {
+  pointer-events: none;
+}
+.ab-cell:not(.ab-cc-dis):not(.ab-cc-past):not(.ab-cell-empty):hover {
+  background: #f0f2f0;
+}
+
+/* Today — gray-green circle (today chip color) */
+/* .ab-cc-today {
+  background: var(--ab-today-chip) !important;
+  color: #fff !important;
+  font-weight: 600;
+} */
+
+/* Selected — accent green */
+.ab-cc-sel {
+  background: var(--ab-accent) !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+
+/* Past dates */
+.ab-cc-past {
+  color: var(--ab-blocked) !important;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+
+/* Disabled (blocked / no slots).
+   Takes priority over .ab-cc-today — today with no slots stays gray. */
+.ab-cc-dis {
+  color: var(--ab-blocked) !important;
+  background: transparent !important;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+
+/* Today + disabled: subtle ring so users still know it is today */
+.ab-cc-today-dis {
+    border: 1px solid color-mix(in srgb, var(--ab-accent) 30%, transparent);
+}
+
+/* Cutoff indicator dot */
+.ab-cell-dot {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  background: var(--ab-dot);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SELECTION BAR
+   ════════════════════════════════════════════════════════════════════ */
+.ab-sel-bar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 16px;
+  background: var(--ab-accent-light);
+  border-top: 1px solid #bde0ce;
+}
+.ab-sel-bar.ab-on {
+  display: flex;
+}
+
+.ab-sb-l {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ab-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.ab-sb-v {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ab-text);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   TIMESLOT GRID
+   ════════════════════════════════════════════════════════════════════ */
+.ab-ts-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-family: "DM Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  padding: 5px 10px 10px;
+}
+
+/* ── Base slot chip ── */
+.ab-ts-chip {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #e4e6e4;
+  background: #fff;
+  color: var(--ab-text);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    border-color 0.13s ease,
+    background 0.13s ease,
+    box-shadow 0.13s ease,
+    opacity 0.13s ease;
+}
+.ab-ts-chip:hover:not(.ab-ts-dis) {
+  border-color: var(--ab-accent);
+}
+
+/* Slot label e.g. "MORNING" */
+.ab-ts-label {
+  font-size: 14px;
+  text-transform: uppercase;
+  color: inherit;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Time range e.g. "9am – 1pm" */
+.ab-ts-time {
+  font-size: 13px;
+  font-weight: 500;
+  color: inherit;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+/* "Unavailable" sub-label */
+.ab-ts-unavail {
+  font-weight: 400;
+  font-size: 14px;
+  color: #e05252;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+/* ── Selected ── */
+.ab-ts-chip.ab-ts-sel {
+  border-color: var(--ab-accent);
+  background: var(--ab-accent);
+  color: var(--ab-accent-light);
+}
+
+/* ── Disabled / unavailable ── */
+.ab-ts-chip.ab-ts-dis {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── "Closes Soon" badge ── */
+.ab-ts-badge {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #e05252;
+  color: #fff;
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 100px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+
+/* ════════════════════════════════════════════════════════════════════
+   NO-SLOTS EMPTY STATE
+   ════════════════════════════════════════════════════════════════════ */
+.ab-ts-grid.ab-ts-empty {
+  display: block;
+}
+
+.ab-ts-no-slots {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #fff8f8;
+  border: 1.5px dashed #f0c0c0;
+  border-radius: 12px;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #b05050;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ab-ts-no-slots::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  background-color: #e05252;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='9' stroke='%23e05252' stroke-width='1.5' fill='none'/%3E%3Cline x1='10' y1='6' x2='10' y2='11' stroke='%23e05252' stroke-width='1.8' stroke-linecap='round'/%3E%3Ccircle cx='10' cy='14' r='1' fill='%23e05252'/%3E%3C/svg%3E");
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='9' stroke='%23e05252' stroke-width='1.5' fill='none'/%3E%3Cline x1='10' y1='6' x2='10' y2='11' stroke='%23e05252' stroke-width='1.8' stroke-linecap='round'/%3E%3Ccircle cx='10' cy='14' r='1' fill='%23e05252'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+}

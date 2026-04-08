@@ -135,7 +135,7 @@
         clockId: "ab-clock",
         accent: "#3a8b6b",
         slotDependency: false, // auto-disable dates with no slots
-        initialRender: false, // fire onChange on page load
+        initialRender: true, // fire onChange on page load
         onChange(val) {
           currentDateObj = val;
           console.log(currentDateObj);
